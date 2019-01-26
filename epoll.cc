@@ -2,7 +2,7 @@
 void EpollServer::Start()
 {
 		_listenfd = socket(AF_INET,SOCK_STREAM,0);
-		if(_listenfd == -1)
+		if(_listenfd < 0)
 		{
 				ErrorLog("socket");
 				return ;
@@ -26,11 +26,12 @@ void EpollServer::Start()
 		TraceLog(" listen on %d ",_port);
 
 		_eventfd = epoll_create(100000);
-		if(_eventfd == -1)
+		if(_eventfd < 0)
 		{
 				ErrorLog("epoll_create");
 				return ;
 		}
+SetNonblocking(_listenfd);
 		//添加listenfd到epoll，监听连接事件
 		OPEvent(_listenfd,EPOLLIN,EPOLL_CTL_ADD);
 		//进入事件循环
@@ -59,7 +60,6 @@ void EpollServer::EventLoop()
 										ErrorLog("accept");
 										continue;
 								}
-								TraceLog("new connect");
 								ConnectEventHandle(connectfd);
 						}
 						else if(events[i].events & EPOLLIN)
