@@ -81,3 +81,71 @@ void EpollServer::EventLoop()
 				}
 		}
 }
+void EpollServer::RemoveConnect(int fd)
+{
+	TraceLog("%d", fd);
+
+	
+	OPEvent(fd, 0, EPOLL_CTL_DEL);
+
+	Connect* con = _fdConnectMap[fd];
+	if (--con->_ref == 0)
+	{
+		delete con;
+	}
+
+	_fdConnectMap.erase(fd);
+}
+
+void EpollServer::SendInLoop(int fd, const char* buf, int len)
+{
+	int slen = send(fd, buf, len, 0);
+	if (slen < 0)
+	{
+		ErrorLog("send");
+		return;
+	}
+
+	if (slen < len)
+	{
+		TraceLog("len:%d, slen:%d", len, slen);
+		map<int, Connect*>::iterator it = _fdConnectMap.find(fd);
+		if (it != _fdConnectMap.end())
+		{
+			Connect* con = it->second;
+			Channel* channel = &(con->_clientChannel);
+			if (fd == con->_serverChannel._fd)
+			{
+				channel = &(con->_serverChannel);
+			}
+
+			channel->_buffer.append(buf+slen);
+			int event = 0;
+			event |= EPOLLIN;
+			event |= EPOLLOUT;
+			event |= EPOLLONESHOT;
+			OPEvent(fd, event, EPOLL_CTL_MOD);
+		}
+	}
+}
+
+void EpollServer::Forwarding(Channel* clientChannel, Channel* serverChannel)
+{
+	char buf[4097];
+	int rlen = recv(clientChannel->_fd, buf, 4096, 0);
+	if (rlen < 0)
+	{
+		ErrorLog("recv");
+		return;
+	}
+	else if (rlen == 0)
+	{
+		RemoveConnect(clientChannel->_fd);
+		shutdown(serverChannel->_fd, SHUT_WR);
+		return;
+	}
+
+	buf[rlen] = '\0';
+	SendInLoop(serverChannel->_fd, buf, rlen);
+}
+

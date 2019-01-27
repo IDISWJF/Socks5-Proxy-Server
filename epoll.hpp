@@ -78,6 +78,10 @@ class EpollServer
 				}
 				void Start();
 				void EventLoop();
+
+	void Forwarding(Channel* clientChannel, Channel* serverChannel);
+	void RemoveConnect(int fd);
+	void SendInLoop(int fd, const char* buf, int len);
 				//多态实现的虚函数
 				virtual void ConnectEventHandle(int connectfd) = 0;
 				virtual void ReadEventHandle(int connectfd) = 0;
