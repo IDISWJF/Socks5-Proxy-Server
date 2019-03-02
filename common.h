@@ -1,5 +1,5 @@
-#ifndef __COMMON_HPP__
-#define __COMMON_HPP__
+#ifndef __COMMON_H__
+#define __COMMON_H__
 
 #include <iostream>
 #include <map>
@@ -40,7 +40,9 @@ static string GetFileName(const string& path)
 inline static void __TraceDebug(const char* filename,int line, const char* function, const char*format, ...)
 {
 #ifdef __TRACE__
+	//输出调用函数的信息
 	fprintf(stdout,"[TRACE][%s:%d->%s]:",GetFileName(filename).c_str(), line, function);
+	//输出用户打的trace信息
 	va_list args;
 	va_start(args,format);
 	vfprintf(stdout,format, args);
@@ -53,8 +55,10 @@ inline static void __ErrorDebug(const char* filename,int line, const char* funct
 								format, ...)
 {
 #ifdef __DEBUG__
+	//输出调用函数的信息
 	fprintf(stdout,"[ERROR][%s:%d->%s]:",GetFileName(filename).c_str(), line, function);
 
+	//输出用户打的trace信息
 	va_list args;
 	va_start(args,format);
 	vfprintf(stdout,format, args);
@@ -71,4 +75,4 @@ inline static void __ErrorDebug(const char* filename,int line, const char* funct
 	__ErrorDebug(__FILE__,__LINE__,__FUNCTION__, __VA_ARGS__);
 
 
-#endif 
+#endif //__COMMON_H__

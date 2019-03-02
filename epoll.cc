@@ -1,92 +1,104 @@
-#include"epoll.hpp"
+#include "epoll.h"
+
+const size_t EpollServer::_MAX_EVENTS = 10000;
+
 void EpollServer::Start()
 {
-		_listenfd = socket(AF_INET,SOCK_STREAM,0);
-		if(_listenfd < 0)
-		{
-				ErrorLog("socket");
-				return ;
-		}
-		struct sockaddr_in addr;
-		memset(&addr,0,sizeof(addr));
-		addr.sin_family = AF_INET;
-		addr.sin_port = htons(_port);
-		addr.sin_addr.s_addr = htonl(INADDR_ANY);//ä¸€å°ä¸»æœºå¯èƒ½æœ‰å¤šä¸ªç½‘å¡ï¼Œæœ‰å¤šä¸ªIPåœ°å€ï¼ŒINADDR_ANYç›‘å¬æœ¬æœºçš„ä»»æ„ç½‘å¡
-		if( bind(_listenfd,(struct sockaddr*)&addr,sizeof(addr)) < 0 )
-		{
-				ErrorLog("bind");
-				return ;
-		}
-		if(listen(_listenfd,10000) < 0)
-		{
-				ErrorLog("listen");
-				return ;
-		}
+	_listenfd = socket(AF_INET, SOCK_STREAM, 0);
+	if (_listenfd < 0)
+	{
+		ErrorLog("socket");
+		return;
+	}
 
-		TraceLog(" listen on %d ",_port);
+	struct sockaddr_in addr;
+	memset(&addr, 0, sizeof(addr));
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(_port);
+	addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
-		_eventfd = epoll_create(100000);
-		if(_eventfd < 0)
-		{
-				ErrorLog("epoll_create");
-				return ;
-		}
-SetNonblocking(_listenfd);
-		//æ·»åŠ listenfdåˆ°epollï¼Œç›‘å¬è¿žæŽ¥äº‹ä»¶
-		OPEvent(_listenfd,EPOLLIN,EPOLL_CTL_ADD);
-		//è¿›å…¥äº‹ä»¶å¾ªçŽ¯
-		EventLoop();	
+	if(bind(_listenfd, (struct sockaddr*)&addr, sizeof(addr)) < 0)
+	{
+		ErrorLog("bind");
+		return;
+	}
+
+	if (listen(_listenfd, 10000) < 0)
+	{
+		ErrorLog("listen");
+		return;
+	}
+
+	TraceLog("listen on %d", _port);
+
+	_eventfd = epoll_create(_MAX_EVENTS);
+	if (_eventfd < 0)
+	{
+		ErrorLog("epoll_create");
+		return;
+	}
+
+	// ½«¼àÌýÌ×½Ó×ÖÌí¼Óµ½epoll
+	SetNonblocking(_listenfd);
+	OpEvent(_listenfd, EPOLLIN, EPOLL_CTL_ADD);
+
+	// ÊÂ¼þÑ­»·
+	EventLoop();
 }
+
 void EpollServer::EventLoop()
 {
-		struct epoll_event events[100000];
-		while(1)
+	struct epoll_event events[_MAX_EVENTS];
+	while (1)
+	{
+		int n = epoll_wait(_eventfd, events, _MAX_EVENTS, -1);
+		if (n < 0)
 		{
-				int n = epoll_wait(_eventfd,events,100000,-1);
-				if(n < 0)
-				{
-						ErrorLog("epoll_wait");
-						break;
-				}
-				for(int i = 0;i < n;++i)
-				{
-						if(events[i].data.fd == _listenfd)
-						{
-								struct sockaddr_in addr;
-								socklen_t len;
-								int connectfd = accept(_listenfd,(struct sockaddr*)&addr,&len);
-								if(connectfd < 0)
-								{
-										ErrorLog("accept");
-										continue;
-								}
-								ConnectEventHandle(connectfd);
-						}
-						else if(events[i].events & EPOLLIN)
-						{
-								ReadEventHandle(events[i].data.fd);
-						}
-						else if(events[i].events & EPOLLOUT)
-						{
-								WriteEventHandle(events[i].data.fd);
-						}
-						else if(events[i].events & EPOLLERR)
-						{
-								TraceLog("error event");
-						}
-						else
-						{
-								ErrorLog("unkonw event");
-						}
-				}
+			ErrorLog("epoll_wait");
+			break;
 		}
+
+		for (int i = 0; i < n; ++i)
+		{
+			if(events[i].data.fd == _listenfd)
+			{
+				struct sockaddr_in addr;
+				socklen_t len;
+				int connectfd = accept(_listenfd, (struct sockaddr*)&addr, &len);
+				if (connectfd < 0)
+				{
+					ErrorLog("accept");
+					continue;
+				}
+
+				ConnectEventHandle(connectfd);
+			}
+			else if (events[i].events & EPOLLIN)
+			{
+				ReadEventHandle(events[i].data.fd);
+			}
+			else if (events[i].events & EPOLLOUT)
+			{
+				WriteEventHandle(events[i].data.fd);
+			}
+			else if (events[i].events & EPOLLERR)
+			{
+				TraceLog("error event");
+			}
+			else
+			{
+				ErrorLog("unknow event");
+			}
+		}
+	}
 }
+
 void EpollServer::RemoveConnect(int fd)
 {
 	TraceLog("%d", fd);
 
-	
-	OPEvent(fd, 0, EPOLL_CTL_DEL);
+	// É¾³ýµô¶ÔÓ¦µÄÊÂ¼þ
+	OpEvent(fd, 0, EPOLL_CTL_DEL);
 
 	Connect* con = _fdConnectMap[fd];
 	if (--con->_ref == 0)
@@ -94,6 +106,7 @@ void EpollServer::RemoveConnect(int fd)
 		delete con;
 	}
 
+	// É¾³ý¶ÔÓ¦µÄÍ¨µÀ
 	_fdConnectMap.erase(fd);
 }
 
@@ -124,12 +137,13 @@ void EpollServer::SendInLoop(int fd, const char* buf, int len)
 			event |= EPOLLIN;
 			event |= EPOLLOUT;
 			event |= EPOLLONESHOT;
-			OPEvent(fd, event, EPOLL_CTL_MOD);
+			OpEvent(fd, event, EPOLL_CTL_MOD);
 		}
 	}
 }
 
-void EpollServer::Forwarding(Channel* clientChannel, Channel* serverChannel)
+void EpollServer::Forwarding(Channel* clientChannel, Channel* serverChannel,
+							 bool recvDecrypt, bool sendEncry)
 {
 	char buf[4097];
 	int rlen = recv(clientChannel->_fd, buf, 4096, 0);
@@ -145,7 +159,16 @@ void EpollServer::Forwarding(Channel* clientChannel, Channel* serverChannel)
 		return;
 	}
 
+	if (recvDecrypt)
+	{
+		Decrypt(buf, rlen);
+	}
+
+	if (sendEncry)
+	{
+		Encry(buf, rlen);
+	}
+
 	buf[rlen] = '\0';
 	SendInLoop(serverChannel->_fd, buf, rlen);
 }
-
